@@ -36,9 +36,13 @@ import {
   Equal,
   LogOut,
   Timer,
-  Bookmark
+  Bookmark,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
+import { GoogleGenAI } from "@google/genai";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Question, UserProgress, AppState } from './types';
 import { MOCK_QUESTIONS, playClickSound, playSuccessSound, playErrorSound, RICKROLL_GIF, RICKROLL_AUDIO } from './constants';
@@ -1233,7 +1237,7 @@ export default function App() {
                               <span className="text-[10px] font-black uppercase tracking-widest text-earth-400 px-3">Difficulty:</span>
                               <select 
                                 value={state.activeDifficulty}
-                                onChange={(e) => { playClickSound(); setState(s => ({ ...s, activeDifficulty: e.target.value })) }}
+                                onChange={(e) => { playClickSound(); setState(s => ({ ...s, activeDifficulty: e.target.value as any })) }}
                                 className="bg-transparent text-[10px] font-black uppercase tracking-widest text-earth-600 dark:text-earth-300 border-none focus:ring-0 cursor-pointer pr-8"
                               >
                                 {difficulties.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1384,7 +1388,7 @@ export default function App() {
                       <span className="text-[10px] font-black uppercase tracking-widest text-earth-400 px-3">Difficulty:</span>
                       <select 
                         value={state.activeDifficulty}
-                        onChange={(e) => { playClickSound(); setState(s => ({ ...s, activeDifficulty: e.target.value })) }}
+                        onChange={(e) => { playClickSound(); setState(s => ({ ...s, activeDifficulty: e.target.value as any })) }}
                         className="bg-transparent text-[10px] font-black uppercase tracking-widest text-earth-600 dark:text-earth-300 border-none focus:ring-0 cursor-pointer pr-8"
                       >
                         {difficulties.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1594,10 +1598,57 @@ export default function App() {
           currentQuestionIndex: s.currentQuestionIndex + 1,
           selectedOption: null,
           showSolution: false,
-          isExplanationExpanded: false
+          isExplanationExpanded: false,
+          geminiExplanation: null,
+          isGeminiLoading: false
         }));
       } else {
-        setState(s => ({ ...s, currentView: 'dashboard', selectedChapter: null, isExplanationExpanded: false }));
+        setState(s => ({ ...s, currentView: 'dashboard', selectedChapter: null, isExplanationExpanded: false, geminiExplanation: null, isGeminiLoading: false }));
+      }
+    };
+
+    const getGeminiExplanation = async () => {
+      if (state.isGeminiLoading || state.geminiExplanation) return;
+      
+      playClickSound();
+      setState(s => ({ ...s, isGeminiLoading: true }));
+      
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const prompt = `
+          You are an expert tutor in ${state.selectedSubject}.
+          Explain the following question and its correct answer in detail.
+          Use clear, simple language and provide step-by-step reasoning.
+          Format your response using Markdown (bolding, lists, etc.) for better readability.
+
+          Question: ${question.text}
+          Options:
+          A: ${question.options[0]}
+          B: ${question.options[1]}
+          C: ${question.options[2]}
+          D: ${question.options[3]}
+          
+          Correct Answer: Option ${String.fromCharCode(65 + question.correctAnswer)}: ${question.options[question.correctAnswer]}
+          
+          Provide a detailed explanation.
+        `;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: prompt,
+        });
+
+        setState(s => ({ 
+          ...s, 
+          geminiExplanation: response.text, 
+          isGeminiLoading: false,
+          isExplanationExpanded: true 
+        }));
+        playSuccessSound();
+      } catch (error) {
+        console.error("Gemini Error:", error);
+        setState(s => ({ ...s, isGeminiLoading: false }));
+        playErrorSound();
       }
     };
 
@@ -1749,18 +1800,34 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   className="bg-earth-50 dark:bg-earth-900/50 rounded-3xl border border-earth-100 dark:border-earth-800 overflow-hidden"
                 >
-                  <button
-                    onClick={() => setState(s => ({ ...s, isExplanationExpanded: !s.isExplanationExpanded }))}
-                    className="w-full flex items-center justify-between p-6 md:p-8 hover:bg-earth-100 dark:hover:bg-earth-800/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between p-4 md:p-6 border-b border-earth-100 dark:border-earth-800">
+                    <button
+                      onClick={() => setState(s => ({ ...s, isExplanationExpanded: !s.isExplanationExpanded }))}
+                      className="flex items-center gap-3 hover:opacity-70 transition-opacity"
+                    >
                       <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-600 dark:text-brand-400">
                         <AlertCircle size={18} />
                       </div>
                       <h4 className="text-xs font-black uppercase tracking-widest text-earth-500">Explanation</h4>
-                    </div>
-                    {state.isExplanationExpanded ? <ChevronDown size={20} className="text-earth-400" /> : <ChevronRight size={20} className="text-earth-400" />}
-                  </button>
+                      {state.isExplanationExpanded ? <ChevronDown size={16} className="text-earth-400" /> : <ChevronRight size={16} className="text-earth-400" />}
+                    </button>
+
+                    {!state.geminiExplanation && (
+                      <button
+                        onClick={getGeminiExplanation}
+                        disabled={state.isGeminiLoading}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
+                      >
+                        {state.isGeminiLoading ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={14} />
+                        )}
+                        {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
+                      </button>
+                    )}
+                  </div>
+                  
                   <AnimatePresence>
                     {state.isExplanationExpanded && (
                       <motion.div
@@ -1769,9 +1836,23 @@ export default function App() {
                         exit={{ height: 0, opacity: 0 }}
                         className="px-6 md:px-8 pb-6 md:pb-8"
                       >
-                        <p className="text-earth-700 dark:text-earth-300 leading-relaxed font-medium pt-4 border-t border-earth-100 dark:border-earth-800">
-                          {question.explanation}
-                        </p>
+                        <div className="space-y-6 pt-4">
+                          <div className="prose prose-sm dark:prose-invert max-w-none text-earth-700 dark:text-earth-300 leading-relaxed">
+                            <Markdown>{question.explanation}</Markdown>
+                          </div>
+
+                          {state.geminiExplanation && (
+                            <div className="mt-6 p-6 bg-brand-500/5 border border-brand-500/20 rounded-2xl space-y-4">
+                              <div className="flex items-center gap-2 text-brand-600 dark:text-brand-400">
+                                <Sparkles size={16} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Gemini's Insight</span>
+                              </div>
+                              <div className="prose prose-sm dark:prose-invert max-w-none text-earth-700 dark:text-earth-300 leading-relaxed">
+                                <Markdown>{state.geminiExplanation}</Markdown>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>

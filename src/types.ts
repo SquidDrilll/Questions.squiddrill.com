@@ -52,4 +52,6 @@ export interface AppState {
   showSolution: boolean;
   showCalculator: boolean;
   isExplanationExpanded: boolean;
+  geminiExplanation?: string | null;
+  isGeminiLoading?: boolean;
 }
