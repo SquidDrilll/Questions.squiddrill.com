@@ -400,6 +400,39 @@ const SettingsView = ({ state, setState, playClickSound, updateProgress, INITIAL
           <div className="h-px bg-earth-100 dark:bg-earth-800" />
 
           <div className="space-y-4">
+            <h2 className="text-lg font-bold text-earth-900 dark:text-earth-50">AI Configuration</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-600 dark:text-brand-400">
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-brand-600 dark:text-brand-400">Gemini API Key</h3>
+                  <p className="text-xs text-earth-500">Select your own API key to use higher-tier models or if the default key is not working.</p>
+                </div>
+              </div>
+              <button 
+                onClick={async () => {
+                  playClickSound();
+                  const win = window as any;
+                  if (win.aistudio?.openSelectKey) {
+                    await win.aistudio.openSelectKey();
+                  } else {
+                    // Fallback for local dev or if not in AI Studio
+                    console.log("API Key selection is only available in the AI Studio environment.");
+                  }
+                }}
+                className="px-4 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold hover:bg-brand-600 transition-colors shadow-lg shadow-brand-500/20 whitespace-nowrap flex items-center gap-2"
+              >
+                <RefreshCw size={14} />
+                Select API Key
+              </button>
+            </div>
+          </div>
+
+          <div className="h-px bg-earth-100 dark:bg-earth-800" />
+
+          <div className="space-y-4">
             <h2 className="text-lg font-bold text-earth-900 dark:text-earth-50">Data & Privacy</h2>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-danger-500/5 border border-danger-500/20 rounded-2xl gap-4">
               <div>
@@ -497,6 +530,19 @@ export default function App() {
       userId: null,
     };
   });
+
+  const [hasApiKey, setHasApiKey] = useState(!!process.env.GEMINI_API_KEY);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      const win = window as any;
+      if (win.aistudio?.hasSelectedApiKey) {
+        const hasKey = await win.aistudio.hasSelectedApiKey();
+        if (hasKey) setHasApiKey(true);
+      }
+    };
+    checkKey();
+  }, []);
 
   // Persist current view and session state
   useEffect(() => {
@@ -1441,16 +1487,18 @@ export default function App() {
                       </select>
                     </div>
 
-                    <div className="flex items-center gap-1 bg-white dark:bg-earth-900 p-1 rounded-xl border border-earth-200 dark:border-earth-800 shadow-sm">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-earth-400 px-3">Sort:</span>
+                    <div className="flex items-center gap-1 bg-white dark:bg-earth-900 p-1 rounded-xl border border-earth-200 dark:border-earth-800 shadow-sm overflow-x-auto no-scrollbar max-w-[300px] sm:max-w-none">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-earth-400 px-3 shrink-0">Sort:</span>
                       {[
                         { id: 'newest', label: 'Newest' },
-                        { id: 'oldest', label: 'Oldest' }
+                        { id: 'oldest', label: 'Oldest' },
+                        { id: 'easy', label: 'Easy' },
+                        { id: 'hard', label: 'Hard' }
                       ].map(opt => (
                         <button
                           key={opt.id}
                           onClick={() => { playClickSound(); setState(s => ({ ...s, questionSortBy: opt.id as any })) }}
-                          className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                          className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shrink-0 ${
                             state.questionSortBy === opt.id 
                               ? 'bg-brand-500 text-white shadow-sm' 
                               : 'text-earth-400 hover:text-earth-600 dark:hover:text-earth-200'
@@ -1482,7 +1530,14 @@ export default function App() {
 
                 <div className="grid grid-cols-1 gap-4">
                   {selectedChapterQuestions
-                    .sort((a, b) => state.questionSortBy === 'newest' ? b.year - a.year : a.year - b.year)
+                    .sort((a, b) => {
+                      if (state.questionSortBy === 'newest') return b.year - a.year;
+                      if (state.questionSortBy === 'oldest') return a.year - b.year;
+                      const difficultyOrder = { 'Easy': 1, 'Medium': 2, 'Hard': 3 };
+                      if (state.questionSortBy === 'easy') return difficultyOrder[a.difficulty] - difficultyOrder[b.difficulty];
+                      if (state.questionSortBy === 'hard') return difficultyOrder[b.difficulty] - difficultyOrder[a.difficulty];
+                      return 0;
+                    })
                     .map((q, idx) => {
                       const isSolved = state.progress.completedQuestions.includes(q.id);
                       const status = state.progress.questionStatus?.[q.id];
@@ -1690,12 +1745,11 @@ export default function App() {
         const prompt = `Create a clear, educational illustration for this concept: ${question.text}. The illustration should be simple, clean, and helpful for a student. Focus on visual clarity.`;
 
         const response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-image-preview",
+          model: "gemini-2.5-flash-image",
           contents: { parts: [{ text: prompt }] },
           config: {
             imageConfig: {
-              aspectRatio: "1:1",
-              imageSize: "1K"
+              aspectRatio: "1:1"
             }
           }
         });
@@ -1864,6 +1918,71 @@ export default function App() {
               </h2>
             </div>
 
+            {/* AI Tools Bar - Always Visible */}
+            <div className="flex items-center justify-between p-4 bg-brand-500/5 dark:bg-brand-500/10 rounded-2xl border border-brand-500/20">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-brand-500/20 flex items-center justify-center text-brand-600 dark:text-brand-400">
+                  <Sparkles size={18} />
+                </div>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-600 dark:text-brand-400">AI Study Tools</h4>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {!hasApiKey ? (
+                  <button
+                    onClick={async () => {
+                      playClickSound();
+                      const win = window as any;
+                      if (win.aistudio?.openSelectKey) {
+                        await win.aistudio.openSelectKey();
+                        setHasApiKey(true);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all"
+                  >
+                    <RefreshCw size={14} />
+                    Select API Key to start AI
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={getQuickTip}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-warning-500/10 text-warning-600 dark:text-warning-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-warning-500/20 transition-all"
+                    >
+                      <Zap size={14} />
+                      Quick Tip
+                    </button>
+
+                    <button
+                      onClick={generateIllustration}
+                      disabled={state.isImageLoading}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-info-500/10 text-info-600 dark:text-info-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-info-500/20 transition-all disabled:opacity-50"
+                    >
+                      {state.isImageLoading ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <ImageIcon size={14} />
+                      )}
+                      {state.isImageLoading ? 'Drawing...' : 'Illustrate'}
+                    </button>
+
+                    <button
+                      onClick={() => getGeminiExplanation()}
+                      disabled={state.isGeminiLoading}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
+                    >
+                      {state.isGeminiLoading ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Options Grid */}
             <div className="grid grid-cols-1 gap-3">
               {question.options.map((option, idx) => {
@@ -1933,46 +2052,6 @@ export default function App() {
                       <h4 className="text-xs font-black uppercase tracking-widest text-earth-500">Explanation</h4>
                       {state.isExplanationExpanded ? <ChevronDown size={16} className="text-earth-400" /> : <ChevronRight size={16} className="text-earth-400" />}
                     </button>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={getQuickTip}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-warning-500/10 text-warning-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-warning-500/20 transition-all"
-                      >
-                        <Zap size={14} />
-                        Quick Tip
-                      </button>
-
-                      {!state.geminiImage && (
-                        <button
-                          onClick={generateIllustration}
-                          disabled={state.isImageLoading}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-info-500/10 text-info-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-info-500/20 transition-all disabled:opacity-50"
-                        >
-                          {state.isImageLoading ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <ImageIcon size={14} />
-                          )}
-                          {state.isImageLoading ? 'Drawing...' : 'Illustrate'}
-                        </button>
-                      )}
-
-                      {!state.geminiExplanation && (
-                        <button
-                          onClick={() => getGeminiExplanation()}
-                          disabled={state.isGeminiLoading}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
-                        >
-                          {state.isGeminiLoading ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Sparkles size={14} />
-                          )}
-                          {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
-                        </button>
-                      )}
-                    </div>
                   </div>
                   
                   <AnimatePresence>

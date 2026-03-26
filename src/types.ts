@@ -45,7 +45,7 @@ export interface AppState {
   activeYear: string;
   activeDifficulty: 'All' | Difficulty;
   chapterSortBy: 'default' | 'a-z' | 'z-a' | 'most' | 'least';
-  questionSortBy: 'newest' | 'oldest';
+  questionSortBy: 'newest' | 'oldest' | 'easy' | 'hard';
   selectedChapter: string | null;
   selectedSubject: string | null;
   selectedOption: number | null;
