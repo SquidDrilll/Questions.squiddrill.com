@@ -1850,6 +1850,45 @@ export default function App() {
               </h2>
             </div>
 
+            {/* AI Tools Bar - Always Visible */}
+            <div className="flex flex-wrap items-center justify-center gap-3 p-4 bg-earth-50/50 dark:bg-earth-900/30 rounded-[2rem] border border-earth-100 dark:border-earth-800/50 shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-earth-400 mr-2">AI Tutoring</span>
+              
+              <button
+                onClick={getQuickTip}
+                className="flex items-center gap-2 px-4 py-2 bg-warning-500/10 text-warning-600 dark:text-warning-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-warning-500/20 transition-all active:scale-95"
+              >
+                <Zap size={14} />
+                Quick Tip
+              </button>
+
+              <button
+                onClick={generateIllustration}
+                disabled={state.isImageLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-info-500/10 text-info-600 dark:text-info-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-info-500/20 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {state.isImageLoading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <ImageIcon size={14} />
+                )}
+                {state.isImageLoading ? 'Drawing...' : 'Illustrate'}
+              </button>
+
+              <button
+                onClick={() => getGeminiExplanation()}
+                disabled={state.isGeminiLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all active:scale-95 shadow-lg shadow-brand-500/20 disabled:opacity-50"
+              >
+                {state.isGeminiLoading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
+              </button>
+            </div>
+
             {/* Options Grid */}
             <div className="grid grid-cols-1 gap-3">
               {question.options.map((option, idx) => {
@@ -1905,7 +1944,7 @@ export default function App() {
 
             {/* Explanation Section */}
             <AnimatePresence>
-              {showSolution && (
+              {(showSolution || state.geminiExplanation || state.geminiImage || state.isGeminiLoading || state.isImageLoading) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1919,49 +1958,21 @@ export default function App() {
                       <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-600 dark:text-brand-400">
                         <AlertCircle size={18} />
                       </div>
-                      <h4 className="text-xs font-black uppercase tracking-widest text-earth-500">Explanation</h4>
+                      <h4 className="text-xs font-black uppercase tracking-widest text-earth-500">
+                        {showSolution ? 'Explanation' : 'AI Insights'}
+                      </h4>
                       {state.isExplanationExpanded ? <ChevronDown size={16} className="text-earth-400" /> : <ChevronRight size={16} className="text-earth-400" />}
                     </button>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={getQuickTip}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-warning-500/10 text-warning-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-warning-500/20 transition-all"
-                      >
-                        <Zap size={14} />
-                        Quick Tip
-                      </button>
-
-                      {!state.geminiImage && (
-                        <button
-                          onClick={generateIllustration}
-                          disabled={state.isImageLoading}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-info-500/10 text-info-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-info-500/20 transition-all disabled:opacity-50"
-                        >
-                          {state.isImageLoading ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <ImageIcon size={14} />
-                          )}
-                          {state.isImageLoading ? 'Drawing...' : 'Illustrate'}
-                        </button>
-                      )}
-
-                      {!state.geminiExplanation && (
-                        <button
-                          onClick={() => getGeminiExplanation()}
-                          disabled={state.isGeminiLoading}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
-                        >
-                          {state.isGeminiLoading ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Sparkles size={14} />
-                          )}
-                          {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
-                        </button>
-                      )}
-                    </div>
+                    {showSolution && (
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                          selectedOption === question.correctAnswer ? 'bg-success-500/10 text-success-600' : 'bg-danger-500/10 text-danger-600'
+                        }`}>
+                          {selectedOption === question.correctAnswer ? 'Correct' : 'Incorrect'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   
                   <AnimatePresence>
