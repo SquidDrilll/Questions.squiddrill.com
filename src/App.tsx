@@ -282,6 +282,187 @@ const QuestionTimer = ({ questionId, isPaused }: { questionId: string, isPaused:
   );
 };
 
+const LoginView = ({ setState, playClickSound }: {
+  setState: React.Dispatch<React.SetStateAction<AppState>>,
+  playClickSound: () => void
+}) => {
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      playClickSound();
+      await signInWithGoogle();
+      // Auth listener in App will handle the rest
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(err.message || "Failed to sign in with Google");
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-earth-50 dark:bg-earth-950 flex flex-col items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white dark:bg-earth-900 p-10 rounded-[3rem] shadow-2xl max-w-md w-full border border-earth-100 dark:border-earth-800 text-center"
+      >
+        <div className="flex flex-col items-center gap-6 mb-10">
+          <div className="w-20 h-20 bg-brand-500 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-brand-500/30 transform -rotate-6">
+            <BookOpen size={40} />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-5xl font-black tracking-tighter text-earth-900 dark:text-earth-50 italic uppercase">
+              Eco<span className="text-brand-500">Study</span>
+            </h1>
+            <p className="text-earth-500 dark:text-earth-400 font-medium tracking-tight">Master Economics with AI Precision</p>
+          </div>
+        </div>
+        
+        <div className="space-y-6">
+          {error && (
+            <div className="p-4 bg-danger-500/10 border border-danger-500/20 rounded-2xl text-danger-600 dark:text-danger-400 text-sm font-bold flex items-center gap-3">
+              <AlertCircle size={18} />
+              {error}
+            </div>
+          )}
+
+          <button 
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full group relative flex items-center justify-center gap-4 py-5 bg-white dark:bg-earth-950 border-2 border-earth-200 dark:border-earth-800 text-earth-900 dark:text-earth-50 rounded-[2rem] font-black uppercase tracking-widest hover:border-brand-500 dark:hover:border-brand-500 transition-all duration-300 shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+          >
+            {isLoading ? (
+              <Loader2 size={24} className="animate-spin text-brand-500" />
+            ) : (
+              <>
+                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+                <span>Continue with Google</span>
+              </>
+            )}
+          </button>
+
+          <p className="text-xs text-earth-400 font-medium px-8 leading-relaxed">
+            By continuing, you agree to our Terms of Service and Privacy Policy. Your progress will be synced across devices.
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const SettingsView = ({ state, setState, playClickSound, updateProgress, INITIAL_PROGRESS }: { 
+  state: AppState, 
+  setState: React.Dispatch<React.SetStateAction<AppState>>, 
+  playClickSound: () => void, 
+  updateProgress: (p: UserProgress) => Promise<void>,
+  INITIAL_PROGRESS: UserProgress
+}) => {
+  const [showConfirmReset, setShowConfirmReset] = useState(false);
+
+  const handleResetProgress = async () => {
+    playSuccessSound();
+    await updateProgress(INITIAL_PROGRESS);
+    setState(s => ({
+      ...s,
+      currentView: 'dashboard'
+    }));
+    setShowConfirmReset(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-earth-50 dark:bg-earth-950 p-4 md:p-8">
+      <div className="max-w-2xl mx-auto space-y-8">
+        <div className="flex items-center gap-4 mb-8">
+          <button 
+            onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'dashboard' })) }}
+            className="p-2 hover:bg-earth-100 dark:hover:bg-earth-900 rounded-full transition-colors text-earth-500"
+          >
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className="text-3xl font-black tracking-tighter text-earth-900 dark:text-earth-50 uppercase italic">Settings</h1>
+        </div>
+
+        <div className="bg-white dark:bg-earth-900 rounded-3xl p-6 border border-earth-100 dark:border-earth-800 shadow-sm space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-lg font-bold text-earth-900 dark:text-earth-50">Account</h2>
+            <p className="text-sm text-earth-500">Logged in as <span className="font-bold text-brand-500">{state.username}</span></p>
+          </div>
+
+          <div className="h-px bg-earth-100 dark:bg-earth-800" />
+
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-earth-900 dark:text-earth-50">Data & Privacy</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-danger-500/5 border border-danger-500/20 rounded-2xl gap-4">
+              <div>
+                <h3 className="font-bold text-danger-600 dark:text-danger-400">Reset Progress</h3>
+                <p className="text-xs text-earth-500">This will permanently delete all your study history, bookmarks, and stats.</p>
+              </div>
+              <button 
+                onClick={() => { playClickSound(); setShowConfirmReset(true); }}
+                className="px-4 py-2 bg-danger-500 text-white rounded-xl text-sm font-bold hover:bg-danger-600 transition-colors shadow-lg shadow-danger-500/20 whitespace-nowrap"
+              >
+                Reset Progress
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmReset && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowConfirmReset(false)}
+              className="absolute inset-0 bg-earth-950/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative z-10 w-full max-w-sm bg-white dark:bg-earth-900 rounded-[2.5rem] p-8 border border-earth-200 dark:border-earth-800 shadow-2xl text-center"
+            >
+              <div className="w-16 h-16 bg-danger-500/10 text-danger-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertCircle size={32} />
+              </div>
+              <h2 className="text-2xl font-black text-earth-900 dark:text-earth-50 mb-2 tracking-tight">Are you sure?</h2>
+              <p className="text-earth-500 mb-8 text-sm leading-relaxed">
+                This action cannot be undone. All your progress, including streak and badges, will be lost forever.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => setShowConfirmReset(false)}
+                  className="px-6 py-3 bg-earth-100 dark:bg-earth-800 text-earth-600 dark:text-earth-400 rounded-2xl font-bold hover:bg-earth-200 dark:hover:bg-earth-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleResetProgress}
+                  className="px-6 py-3 bg-danger-500 text-white rounded-2xl font-bold hover:bg-danger-600 transition-all shadow-lg shadow-danger-500/20"
+                >
+                  Confirm Reset
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export default function App() {
   const [state, setState] = useState<AppState>(() => {
     return {
@@ -449,104 +630,6 @@ export default function App() {
   const handleSettingsClick = () => {
     playClickSound();
     setState(s => ({ ...s, currentView: 'settings' }));
-  };
-
-  const renderSettings = () => {
-    const [showConfirmReset, setShowConfirmReset] = useState(false);
-
-    const handleResetProgress = async () => {
-      playSuccessSound();
-      await updateProgress(INITIAL_PROGRESS);
-      setState(s => ({
-        ...s,
-        currentView: 'dashboard'
-      }));
-      setShowConfirmReset(false);
-    };
-
-    return (
-      <div className="min-h-screen bg-earth-50 dark:bg-earth-950 p-4 md:p-8">
-        <div className="max-w-2xl mx-auto space-y-8">
-          <div className="flex items-center gap-4 mb-8">
-            <button 
-              onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'dashboard' })) }}
-              className="p-2 hover:bg-earth-100 dark:hover:bg-earth-900 rounded-full transition-colors text-earth-500"
-            >
-              <ArrowLeft size={24} />
-            </button>
-            <h1 className="text-3xl font-black tracking-tighter text-earth-900 dark:text-earth-50 uppercase italic">Settings</h1>
-          </div>
-
-          <div className="bg-white dark:bg-earth-900 rounded-3xl p-6 border border-earth-100 dark:border-earth-800 shadow-sm space-y-6">
-            <div className="space-y-2">
-              <h2 className="text-lg font-bold text-earth-900 dark:text-earth-50">Account</h2>
-              <p className="text-sm text-earth-500">Logged in as <span className="font-bold text-brand-500">{state.username}</span></p>
-            </div>
-
-            <div className="h-px bg-earth-100 dark:bg-earth-800" />
-
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-earth-900 dark:text-earth-50">Data & Privacy</h2>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-danger-500/5 border border-danger-500/20 rounded-2xl gap-4">
-                <div>
-                  <h3 className="font-bold text-danger-600 dark:text-danger-400">Reset Progress</h3>
-                  <p className="text-xs text-earth-500">This will permanently delete all your study history, bookmarks, and stats.</p>
-                </div>
-                <button 
-                  onClick={() => { playClickSound(); setShowConfirmReset(true); }}
-                  className="px-4 py-2 bg-danger-500 text-white rounded-xl text-sm font-bold hover:bg-danger-600 transition-colors shadow-lg shadow-danger-500/20 whitespace-nowrap"
-                >
-                  Reset Progress
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Confirmation Modal */}
-        <AnimatePresence>
-          {showConfirmReset && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setShowConfirmReset(false)}
-                className="absolute inset-0 bg-earth-950/60 backdrop-blur-sm"
-              />
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                className="relative z-10 w-full max-w-sm bg-white dark:bg-earth-900 rounded-[2.5rem] p-8 border border-earth-200 dark:border-earth-800 shadow-2xl text-center"
-              >
-                <div className="w-16 h-16 bg-danger-500/10 text-danger-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <AlertCircle size={32} />
-                </div>
-                <h2 className="text-2xl font-black text-earth-900 dark:text-earth-50 mb-2 tracking-tight">Are you sure?</h2>
-                <p className="text-earth-500 mb-8 text-sm leading-relaxed">
-                  This action cannot be undone. All your progress, including streak and badges, will be lost forever.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button 
-                    onClick={() => setShowConfirmReset(false)}
-                    className="px-6 py-3 bg-earth-100 dark:bg-earth-800 text-earth-600 dark:text-earth-400 rounded-2xl font-bold hover:bg-earth-200 dark:hover:bg-earth-700 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={handleResetProgress}
-                    className="px-6 py-3 bg-danger-500 text-white rounded-2xl font-bold hover:bg-danger-600 transition-all shadow-lg shadow-danger-500/20"
-                  >
-                    Yes, Reset
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
   };
 
   const toggleDarkMode = () => {
@@ -742,119 +825,6 @@ export default function App() {
   const difficulties = useMemo(() => {
     return ['All', 'Easy', 'Medium', 'Hard'] as const;
   }, []);
-
-  const renderLogin = () => {
-    const [isSignUp, setIsSignUp] = useState(false);
-    const [error, setError] = useState('');
-
-    return (
-      <div className="min-h-screen bg-earth-50 dark:bg-earth-950 flex flex-col items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-earth-900 p-8 rounded-3xl shadow-xl max-w-md w-full border border-earth-100 dark:border-earth-800"
-        >
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 bg-brand-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
-              <BookOpen size={24} />
-            </div>
-            <h1 className="text-3xl font-black tracking-tighter text-earth-900 dark:text-earth-50">
-              Eco<span className="text-brand-500">Study</span>
-            </h1>
-          </div>
-          
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError('');
-              const form = e.target as HTMLFormElement;
-              const usernameInput = form.elements.namedItem('username') as HTMLInputElement;
-              const passwordInput = form.elements.namedItem('password') as HTMLInputElement;
-              const username = usernameInput.value.trim();
-              const password = passwordInput.value;
-              
-              if (username && password) {
-                const usersStr = localStorage.getItem('ecostudy_users');
-                const users = usersStr ? JSON.parse(usersStr) : {};
-
-                if (isSignUp) {
-                  if (users[username]) {
-                    setError('Username already exists');
-                    return;
-                  }
-                  users[username] = password;
-                  localStorage.setItem('ecostudy_users', JSON.stringify(users));
-                } else {
-                  if (!users[username] || users[username] !== password) {
-                    setError('Invalid username or password');
-                    return;
-                  }
-                }
-
-                playClickSound();
-                localStorage.setItem('ecostudy_username', username);
-                const saved = localStorage.getItem(`ecostudy_progress_${username}`);
-                const progress = saved ? JSON.parse(saved) : INITIAL_PROGRESS;
-                
-                setState(s => ({ 
-                  ...s, 
-                  isAuthenticated: true, 
-                  currentView: 'dashboard',
-                  username,
-                  progress
-                }));
-              }
-            }}
-            className="space-y-4"
-          >
-            {error && (
-              <div className="p-3 bg-danger-500/10 border border-danger-500/20 rounded-xl text-danger-600 dark:text-danger-400 text-sm font-medium text-center">
-                {error}
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-bold text-earth-700 dark:text-earth-300 mb-1.5">Username</label>
-              <input 
-                type="text" 
-                name="username"
-                required
-                className="w-full px-4 py-3 rounded-xl bg-earth-50 dark:bg-earth-950 border border-earth-200 dark:border-earth-800 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all text-earth-900 dark:text-earth-50"
-                placeholder="Enter your username"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-earth-700 dark:text-earth-300 mb-1.5">Password</label>
-              <input 
-                type="password" 
-                name="password"
-                required
-                className="w-full px-4 py-3 rounded-xl bg-earth-50 dark:bg-earth-950 border border-earth-200 dark:border-earth-800 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all text-earth-900 dark:text-earth-50"
-                placeholder="Enter your password"
-              />
-            </div>
-            <button 
-              type="submit"
-              className="w-full py-4 mt-6 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-500/20 active:scale-95"
-            >
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </button>
-          </form>
-          
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError('');
-              }}
-              className="text-sm font-medium text-earth-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-            >
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    );
-  };
 
   const renderDashboard = () => (
     <div className="space-y-10 p-6 md:p-12 max-w-5xl mx-auto">
@@ -1740,10 +1710,10 @@ export default function App() {
       }
     };
 
-    const getGeminiExplanation = async () => {
+    const getGeminiExplanation = async (silent: boolean = false) => {
       if (state.isGeminiLoading || state.geminiExplanation) return;
       
-      playClickSound();
+      if (!silent) playClickSound();
       setState(s => ({ ...s, isGeminiLoading: true }));
       
       try {
@@ -1781,11 +1751,11 @@ export default function App() {
           isGeminiLoading: false,
           isExplanationExpanded: true 
         }));
-        playSuccessSound();
+        if (!silent) playSuccessSound();
       } catch (error) {
         console.error("Gemini Error:", error);
         setState(s => ({ ...s, isGeminiLoading: false }));
-        playErrorSound();
+        if (!silent) playErrorSound();
       }
     };
 
@@ -1911,8 +1881,12 @@ export default function App() {
                     key={idx}
                     disabled={showSolution}
                     onClick={() => { 
+                      const isCorrect = idx === question.correctAnswer;
                       setState(s => ({ ...s, selectedOption: idx, showSolution: true }));
-                      handleAnswer(question.id, idx === question.correctAnswer);
+                      handleAnswer(question.id, isCorrect);
+                      if (!isCorrect) {
+                        getGeminiExplanation(true);
+                      }
                     }}
                     className={`w-full p-4 md:p-5 rounded-2xl text-left border-2 transition-all duration-200 flex items-center justify-between group ${cardClass}`}
                   >
@@ -1975,7 +1949,7 @@ export default function App() {
 
                       {!state.geminiExplanation && (
                         <button
-                          onClick={getGeminiExplanation}
+                          onClick={() => getGeminiExplanation()}
                           disabled={state.isGeminiLoading}
                           className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
                         >
@@ -2361,11 +2335,11 @@ export default function App() {
   return (
     <div className="min-h-screen font-sans">
       <main className={state.currentView !== 'login' ? "pb-20 md:pb-0 md:pl-20" : ""}>
-        {state.currentView === 'login' && renderLogin()}
+        {state.currentView === 'login' && <LoginView setState={setState} playClickSound={playClickSound} />}
         {state.currentView === 'dashboard' && renderDashboard()}
         {state.currentView === 'browser' && renderBrowser()}
         {state.currentView === 'practice' && renderPractice()}
-        {state.currentView === 'settings' && renderSettings()}
+        {state.currentView === 'settings' && <SettingsView state={state} setState={setState} playClickSound={playClickSound} updateProgress={updateProgress} INITIAL_PROGRESS={INITIAL_PROGRESS} />}
       </main>
 
       {/* Navigation Bar (Mobile Bottom / Desktop Left) */}
