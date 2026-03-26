@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "UserProgress": {
+      "title": "User Progress",
+      "description": "Stores the progress and statistics for a single user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique identifier for the user." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "displayName": { "type": "string", "description": "The user's display name." },
+        "completedQuestions": { "type": "array", "items": { "type": "string" }, "description": "List of question IDs completed." },
+        "questionStatus": { "type": "object", "description": "Status of each question (correct/incorrect)." },
+        "bookmarkedQuestions": { "type": "array", "items": { "type": "string" }, "description": "List of bookmarked question IDs." },
+        "accuracyHistory": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "date": { "type": "string" },
+              "accuracy": { "type": "number" }
+            }
+          },
+          "description": "History of accuracy over time." 
+        },
+        "accuracy": { "type": "number", "description": "Overall accuracy percentage." },
+        "streak": { "type": "number", "description": "Current daily streak." },
+        "lastAttemptDate": { "type": "string", "description": "Date of the last question attempt." },
+        "totalCorrect": { "type": "number", "description": "Total number of correct answers." },
+        "totalAttempted": { "type": "number", "description": "Total number of questions attempted." },
+        "badges": { "type": "array", "items": { "type": "string" }, "description": "List of earned badges." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last time the progress was updated." }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProgress",
+      "description": "User profile and progress data."
+    }
+  }
+}

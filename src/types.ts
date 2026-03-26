@@ -54,4 +54,8 @@ export interface AppState {
   isExplanationExpanded: boolean;
   geminiExplanation?: string | null;
   isGeminiLoading?: boolean;
+  geminiImage?: string | null;
+  isImageLoading?: boolean;
+  isAuthReady: boolean;
+  userId: string | null;
 }

@@ -38,14 +38,22 @@ import {
   Timer,
   Bookmark,
   Sparkles,
-  Loader2
+  Loader2,
+  Image as ImageIcon,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkGfm from 'remark-gfm';
 import { GoogleGenAI } from "@google/genai";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Question, UserProgress, AppState } from './types';
 import { MOCK_QUESTIONS, playClickSound, playSuccessSound, playErrorSound, RICKROLL_GIF, RICKROLL_AUDIO } from './constants';
+import { auth, db, signInWithGoogle, logout, saveUserProgress, getUserProgress } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 const INITIAL_PROGRESS: UserProgress = {
   completedQuestions: [],
@@ -276,21 +284,14 @@ const QuestionTimer = ({ questionId, isPaused }: { questionId: string, isPaused:
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => {
-    const savedUsername = localStorage.getItem('ecostudy_username');
-    const savedProgress = savedUsername 
-      ? localStorage.getItem(`ecostudy_progress_${savedUsername}`) 
-      : localStorage.getItem('ecostudy_progress');
-      
-    const progress = savedProgress ? JSON.parse(savedProgress) : INITIAL_PROGRESS;
-
     return {
       questions: MOCK_QUESTIONS,
-      progress,
+      progress: INITIAL_PROGRESS,
       isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
-      currentView: savedUsername ? 'dashboard' : 'login',
+      currentView: 'login',
       practiceMode: 'normal',
-      isAuthenticated: !!savedUsername,
-      username: savedUsername,
+      isAuthenticated: false,
+      username: null,
       currentQuestionIndex: 0,
       showPrank: false,
       searchQuery: '',
@@ -304,9 +305,82 @@ export default function App() {
       selectedOption: null,
       showSolution: false,
       showCalculator: false,
-      isExplanationExpanded: false
+      isExplanationExpanded: false,
+      isAuthReady: false,
+      userId: null,
     };
   });
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // User is signed in
+        const progress = await getUserProgress(user.uid);
+        setState(s => ({
+          ...s,
+          isAuthenticated: true,
+          userId: user.uid,
+          username: user.displayName || user.email,
+          progress: (progress as UserProgress) || INITIAL_PROGRESS,
+          currentView: s.currentView === 'login' ? 'dashboard' : s.currentView,
+          isAuthReady: true
+        }));
+      } else {
+        // User is signed out
+        setState(s => ({
+          ...s,
+          isAuthenticated: false,
+          userId: null,
+          username: null,
+          progress: INITIAL_PROGRESS,
+          currentView: 'login',
+          isAuthReady: true
+        }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Progress to Firestore
+  useEffect(() => {
+    if (state.isAuthenticated && state.userId && state.isAuthReady) {
+      const unsubscribe = onSnapshot(doc(db, 'users', state.userId), (doc) => {
+        if (doc.exists()) {
+          const remoteProgress = doc.data() as UserProgress;
+          // Only update if remote is different to avoid loops
+          // Simple check: compare totalAttempted or similar
+          setState(s => {
+            if (JSON.stringify(s.progress) !== JSON.stringify(remoteProgress)) {
+              return { ...s, progress: remoteProgress };
+            }
+            return s;
+          });
+        }
+      }, (error) => {
+        console.error("Firestore sync error:", error);
+      });
+      return () => unsubscribe();
+    }
+  }, [state.isAuthenticated, state.userId, state.isAuthReady]);
+
+  // Save Progress to Firestore helper
+  const updateProgress = async (newProgress: UserProgress) => {
+    setState(s => ({ ...s, progress: newProgress }));
+    if (state.isAuthenticated && state.userId) {
+      try {
+        await saveUserProgress(state.userId, {
+          ...newProgress,
+          uid: state.userId,
+          email: auth.currentUser?.email,
+          displayName: auth.currentUser?.displayName
+        });
+      } catch (error) {
+        console.error("Error saving progress:", error);
+      }
+    }
+  };
 
   const [prankStep, setPrankStep] = useState<'none' | 'error' | 'fixing' | 'reveal'>('none');
   const [prankProgress, setPrankProgress] = useState(0);
@@ -380,14 +454,13 @@ export default function App() {
   const renderSettings = () => {
     const [showConfirmReset, setShowConfirmReset] = useState(false);
 
-    const handleResetProgress = () => {
+    const handleResetProgress = async () => {
       playSuccessSound();
+      await updateProgress(INITIAL_PROGRESS);
       setState(s => ({
         ...s,
-        progress: INITIAL_PROGRESS,
         currentView: 'dashboard'
       }));
-      localStorage.removeItem('ecostudy_progress');
       setShowConfirmReset(false);
     };
 
@@ -483,20 +556,15 @@ export default function App() {
 
   const toggleBookmark = (questionId: string) => {
     playClickSound();
-    setState(s => {
-      const bookmarks = s.progress.bookmarkedQuestions || [];
-      const isBookmarked = bookmarks.includes(questionId);
-      const newBookmarks = isBookmarked 
-        ? bookmarks.filter(id => id !== questionId)
-        : [...bookmarks, questionId];
-      
-      return {
-        ...s,
-        progress: {
-          ...s.progress,
-          bookmarkedQuestions: newBookmarks
-        }
-      };
+    const bookmarks = state.progress.bookmarkedQuestions || [];
+    const isBookmarked = bookmarks.includes(questionId);
+    const newBookmarks = isBookmarked 
+      ? bookmarks.filter(id => id !== questionId)
+      : [...bookmarks, questionId];
+    
+    updateProgress({
+      ...state.progress,
+      bookmarkedQuestions: newBookmarks
     });
   };
 
@@ -506,45 +574,39 @@ export default function App() {
     } else {
       playErrorSound();
     }
-    setState(s => {
-      const newTotalAttempted = s.progress.totalAttempted + 1;
-      const newTotalCorrect = s.progress.totalCorrect + (isCorrect ? 1 : 0);
-      const newAccuracy = Math.round((newTotalCorrect / newTotalAttempted) * 100);
-      
-      // Streak logic
-      const today = new Date().toDateString();
-      let newStreak = s.progress.streak;
-      if (isCorrect) {
-        newStreak += 1;
-      } else {
-        newStreak = 0;
-      }
+    
+    const newTotalAttempted = state.progress.totalAttempted + 1;
+    const newTotalCorrect = state.progress.totalCorrect + (isCorrect ? 1 : 0);
+    const newAccuracy = Math.round((newTotalCorrect / newTotalAttempted) * 100);
+    
+    // Streak logic
+    const today = new Date().toDateString();
+    let newStreak = state.progress.streak;
+    if (isCorrect) {
+      newStreak += 1;
+    } else {
+      newStreak = 0;
+    }
 
-      const newProgress: UserProgress = {
-        ...s.progress,
-        completedQuestions: [...new Set([...s.progress.completedQuestions, questionId])],
-        questionStatus: {
-          ...(s.progress.questionStatus || {}),
-          [questionId]: isCorrect ? 'correct' : 'incorrect'
-        },
-        totalAttempted: newTotalAttempted,
-        totalCorrect: newTotalCorrect,
-        accuracy: newAccuracy,
-        streak: newStreak,
-        lastAttemptDate: today,
-        accuracyHistory: [
-          ...(s.progress.accuracyHistory || []),
-          { date: new Date().toLocaleDateString(), accuracy: newAccuracy }
-        ].slice(-20) // Keep last 20 attempts
-      };
+    const newProgress: UserProgress = {
+      ...state.progress,
+      completedQuestions: [...new Set([...state.progress.completedQuestions, questionId])],
+      questionStatus: {
+        ...(state.progress.questionStatus || {}),
+        [questionId]: isCorrect ? 'correct' : 'incorrect'
+      },
+      totalAttempted: newTotalAttempted,
+      totalCorrect: newTotalCorrect,
+      accuracy: newAccuracy,
+      streak: newStreak,
+      lastAttemptDate: today,
+      accuracyHistory: [
+        ...(state.progress.accuracyHistory || []),
+        { date: new Date().toLocaleDateString(), accuracy: newAccuracy }
+      ].slice(-20) // Keep last 20 attempts
+    };
 
-      // Prank trigger: removed to prevent black screen issues
-      // if (Math.random() < 0.05 && prankStep === 'none') {
-      //   setTimeout(() => setPrankStep('error'), 1000);
-      // }
-
-      return { ...s, progress: newProgress };
-    });
+    updateProgress(newProgress);
   };
 
   const startPrankFix = () => {
@@ -1600,10 +1662,81 @@ export default function App() {
           showSolution: false,
           isExplanationExpanded: false,
           geminiExplanation: null,
-          isGeminiLoading: false
+          isGeminiLoading: false,
+          geminiImage: null,
+          isImageLoading: false
         }));
       } else {
-        setState(s => ({ ...s, currentView: 'dashboard', selectedChapter: null, isExplanationExpanded: false, geminiExplanation: null, isGeminiLoading: false }));
+        setState(s => ({ ...s, currentView: 'dashboard', selectedChapter: null, isExplanationExpanded: false, geminiExplanation: null, isGeminiLoading: false, geminiImage: null, isImageLoading: false }));
+      }
+    };
+
+    const getQuickTip = async () => {
+      playClickSound();
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite-preview",
+          contents: `Give a very short, one-sentence quick tip for this question: ${question.text}`,
+          config: {
+            systemInstruction: "You are a helpful tutor. Keep tips extremely concise.",
+          }
+        });
+        // For now, let's just show it in a toast or something
+        // But I don't have a toast system yet. I'll just append it to explanation.
+        setState(s => ({ 
+          ...s, 
+          geminiExplanation: (s.geminiExplanation || "") + "\n\n**Quick Tip:** " + response.text,
+          isExplanationExpanded: true 
+        }));
+        playSuccessSound();
+      } catch (error) {
+        console.error("Quick Tip Error:", error);
+      }
+    };
+
+    const generateIllustration = async () => {
+      if (state.isImageLoading || state.geminiImage) return;
+      
+      playClickSound();
+      setState(s => ({ ...s, isImageLoading: true }));
+      
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const prompt = `Create a clear, educational illustration for this concept: ${question.text}. The illustration should be simple, clean, and helpful for a student. Focus on visual clarity.`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-image-preview",
+          contents: { parts: [{ text: prompt }] },
+          config: {
+            imageConfig: {
+              aspectRatio: "1:1",
+              imageSize: "1K"
+            }
+          }
+        });
+
+        let imageUrl = null;
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+              imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+              break;
+            }
+          }
+        }
+
+        setState(s => ({ 
+          ...s, 
+          geminiImage: imageUrl, 
+          isImageLoading: false,
+          isExplanationExpanded: true 
+        }));
+        playSuccessSound();
+      } catch (error) {
+        console.error("Image Generation Error:", error);
+        setState(s => ({ ...s, isImageLoading: false }));
+        playErrorSound();
       }
     };
 
@@ -1620,6 +1753,7 @@ export default function App() {
           Explain the following question and its correct answer in detail.
           Use clear, simple language and provide step-by-step reasoning.
           Format your response using Markdown (bolding, lists, etc.) for better readability.
+          IMPORTANT: Use LaTeX for all mathematical expressions (e.g., $x^2$ or $$\frac{a}{b}$$).
 
           Question: ${question.text}
           Options:
@@ -1636,6 +1770,9 @@ export default function App() {
         const response = await ai.models.generateContent({
           model: "gemini-3-flash-preview",
           contents: prompt,
+          config: {
+            tools: [{ googleSearch: {} }],
+          },
         });
 
         setState(s => ({ 
@@ -1812,20 +1949,45 @@ export default function App() {
                       {state.isExplanationExpanded ? <ChevronDown size={16} className="text-earth-400" /> : <ChevronRight size={16} className="text-earth-400" />}
                     </button>
 
-                    {!state.geminiExplanation && (
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={getGeminiExplanation}
-                        disabled={state.isGeminiLoading}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
+                        onClick={getQuickTip}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-warning-500/10 text-warning-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-warning-500/20 transition-all"
                       >
-                        {state.isGeminiLoading ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Sparkles size={14} />
-                        )}
-                        {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
+                        <Zap size={14} />
+                        Quick Tip
                       </button>
-                    )}
+
+                      {!state.geminiImage && (
+                        <button
+                          onClick={generateIllustration}
+                          disabled={state.isImageLoading}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-info-500/10 text-info-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-info-500/20 transition-all disabled:opacity-50"
+                        >
+                          {state.isImageLoading ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <ImageIcon size={14} />
+                          )}
+                          {state.isImageLoading ? 'Drawing...' : 'Illustrate'}
+                        </button>
+                      )}
+
+                      {!state.geminiExplanation && (
+                        <button
+                          onClick={getGeminiExplanation}
+                          disabled={state.isGeminiLoading}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all disabled:opacity-50"
+                        >
+                          {state.isGeminiLoading ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Sparkles size={14} />
+                          )}
+                          {state.isGeminiLoading ? 'Thinking...' : 'Ask Gemini'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <AnimatePresence>
@@ -1837,8 +1999,26 @@ export default function App() {
                         className="px-6 md:px-8 pb-6 md:pb-8"
                       >
                         <div className="space-y-6 pt-4">
+                          {state.geminiImage && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              className="relative aspect-square w-full max-w-md mx-auto overflow-hidden rounded-2xl border border-earth-200 dark:border-earth-800 shadow-lg"
+                            >
+                              <img 
+                                src={state.geminiImage} 
+                                alt="Educational Illustration" 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute bottom-4 right-4 px-3 py-1 bg-black/50 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-widest rounded-lg">
+                                AI Generated
+                              </div>
+                            </motion.div>
+                          )}
+
                           <div className="prose prose-sm dark:prose-invert max-w-none text-earth-700 dark:text-earth-300 leading-relaxed">
-                            <Markdown>{question.explanation}</Markdown>
+                            <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>{question.explanation}</Markdown>
                           </div>
 
                           {state.geminiExplanation && (
@@ -1848,7 +2028,7 @@ export default function App() {
                                 <span className="text-[10px] font-black uppercase tracking-widest">Gemini's Insight</span>
                               </div>
                               <div className="prose prose-sm dark:prose-invert max-w-none text-earth-700 dark:text-earth-300 leading-relaxed">
-                                <Markdown>{state.geminiExplanation}</Markdown>
+                                <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>{state.geminiExplanation}</Markdown>
                               </div>
                             </div>
                           )}
@@ -2222,10 +2402,9 @@ export default function App() {
           </button>
           <div className="hidden md:block w-8 h-px bg-earth-200 dark:bg-earth-800 my-2" />
           <button 
-            onClick={() => {
+            onClick={async () => {
               playClickSound();
-              localStorage.removeItem('ecostudy_username');
-              setState(s => ({ ...s, currentView: 'login', isAuthenticated: false, username: null }));
+              await logout();
             }}
             className="p-3 rounded-xl text-earth-400 hover:text-danger-500 transition-all" 
             title="Sign Out"
