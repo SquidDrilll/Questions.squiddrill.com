@@ -19,6 +19,7 @@ export interface Question {
 
 export interface UserProgress {
   completedQuestions: string[]; // IDs
+  questionStatus?: Record<string, 'correct' | 'incorrect'>;
   accuracy: number;
   streak: number;
   lastAttemptDate: string | null;
@@ -33,6 +34,7 @@ export interface AppState {
   isDarkMode: boolean;
   currentView: 'login' | 'dashboard' | 'browser' | 'practice';
   isAuthenticated: boolean;
+  username: string | null;
   currentQuestionIndex: number;
   showPrank: boolean;
   searchQuery: string;

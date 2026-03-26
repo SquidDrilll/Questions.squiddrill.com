@@ -40,6 +40,7 @@ import { MOCK_QUESTIONS, playClickSound, playSuccessSound, playErrorSound, RICKR
 
 const INITIAL_PROGRESS: UserProgress = {
   completedQuestions: [],
+  questionStatus: {},
   accuracy: 0,
   streak: 0,
   lastAttemptDate: null,
@@ -161,6 +162,7 @@ export default function App() {
       isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
       currentView: 'login',
       isAuthenticated: false,
+      username: null,
       currentQuestionIndex: 0,
       showPrank: false,
       searchQuery: '',
@@ -181,8 +183,12 @@ export default function App() {
   const audioTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('ecostudy_progress', JSON.stringify(state.progress));
-  }, [state.progress]);
+    if (state.username) {
+      localStorage.setItem(`ecostudy_progress_${state.username}`, JSON.stringify(state.progress));
+    } else {
+      localStorage.setItem('ecostudy_progress', JSON.stringify(state.progress));
+    }
+  }, [state.progress, state.username]);
 
   useEffect(() => {
     if (state.isDarkMode) {
@@ -253,6 +259,10 @@ export default function App() {
       const newProgress: UserProgress = {
         ...s.progress,
         completedQuestions: [...new Set([...s.progress.completedQuestions, questionId])],
+        questionStatus: {
+          ...(s.progress.questionStatus || {}),
+          [questionId]: isCorrect ? 'correct' : 'incorrect'
+        },
         totalAttempted: newTotalAttempted,
         totalCorrect: newTotalCorrect,
         accuracy: newAccuracy,
@@ -417,8 +427,23 @@ export default function App() {
           <form 
             onSubmit={(e) => {
               e.preventDefault();
-              playClickSound();
-              setState(s => ({ ...s, isAuthenticated: true, currentView: 'dashboard' }));
+              const form = e.target as HTMLFormElement;
+              const usernameInput = form.elements.namedItem('username') as HTMLInputElement;
+              const username = usernameInput.value.trim();
+              
+              if (username) {
+                playClickSound();
+                const saved = localStorage.getItem(`ecostudy_progress_${username}`);
+                const progress = saved ? JSON.parse(saved) : INITIAL_PROGRESS;
+                
+                setState(s => ({ 
+                  ...s, 
+                  isAuthenticated: true, 
+                  currentView: 'dashboard',
+                  username,
+                  progress
+                }));
+              }
             }}
             className="space-y-4"
           >
@@ -426,6 +451,7 @@ export default function App() {
               <label className="block text-sm font-bold text-earth-700 dark:text-earth-300 mb-1.5">Username</label>
               <input 
                 type="text" 
+                name="username"
                 required
                 className="w-full px-4 py-3 rounded-xl bg-earth-50 dark:bg-earth-950 border border-earth-200 dark:border-earth-800 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all text-earth-900 dark:text-earth-50"
                 placeholder="Enter your username"
@@ -717,7 +743,20 @@ export default function App() {
                               whileHover={{ y: -4 }}
                               className="group"
                             >
-                              <div className="h-full p-6 bg-white dark:bg-earth-900 rounded-[2rem] border border-earth-200 dark:border-earth-800 shadow-sm hover:shadow-xl hover:border-brand-500/50 transition-all flex flex-col">
+                              <div 
+                                onClick={() => { 
+                                  playClickSound(); 
+                                  setState(s => ({ 
+                                    ...s, 
+                                    selectedChapter: chapter, 
+                                    selectedSubject: subject,
+                                    currentQuestionIndex: 0,
+                                    selectedOption: null,
+                                    showSolution: false
+                                  }));
+                                }}
+                                className="h-full p-6 bg-white dark:bg-earth-900 rounded-[2rem] border border-earth-200 dark:border-earth-800 shadow-sm hover:shadow-xl hover:border-brand-500/50 transition-all flex flex-col cursor-pointer"
+                              >
                                 <div className="flex justify-between items-start mb-6">
                                   <div className="w-12 h-12 flex items-center justify-center bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl group-hover:bg-brand-500 group-hover:text-white transition-all">
                                     <BookOpen size={20} />
@@ -752,24 +791,10 @@ export default function App() {
                                     </div>
                                   </div>
 
-                                  <button
-                                    onClick={() => { 
-                                      playClickSound(); 
-                                      setState(s => ({ 
-                                        ...s, 
-                                        selectedChapter: chapter, 
-                                        selectedSubject: subject,
-                                        currentView: 'practice',
-                                        currentQuestionIndex: 0,
-                                        selectedOption: null,
-                                        showSolution: false
-                                      }));
-                                    }}
-                                    className="w-full py-3.5 bg-earth-50 dark:bg-earth-950 text-earth-900 dark:text-earth-50 font-bold rounded-xl border border-earth-200 dark:border-earth-800 hover:bg-brand-600 hover:text-white hover:border-brand-600 transition-all flex items-center justify-center gap-2 group/btn text-sm"
-                                  >
-                                    Practice Now
+                                  <div className="w-full py-3.5 bg-earth-50 dark:bg-earth-950 text-earth-900 dark:text-earth-50 font-bold rounded-xl border border-earth-200 dark:border-earth-800 hover:bg-brand-600 hover:text-white hover:border-brand-600 transition-all flex items-center justify-center gap-2 group/btn text-sm">
+                                    View Questions
                                     <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
-                                  </button>
+                                  </div>
                                 </div>
                               </div>
                             </motion.div>
@@ -831,6 +856,21 @@ export default function App() {
                 <div className="grid grid-cols-1 gap-4">
                   {selectedChapterQuestions.map((q, idx) => {
                     const isSolved = state.progress.completedQuestions.includes(q.id);
+                    const status = state.progress.questionStatus?.[q.id];
+                    
+                    let Icon = null;
+                    let iconClass = "border-earth-300 dark:border-earth-700 text-earth-500";
+                    
+                    if (status === 'correct') {
+                      Icon = Check;
+                      iconClass = "bg-success-500 border-success-500 text-white";
+                    } else if (status === 'incorrect') {
+                      Icon = X;
+                      iconClass = "bg-danger-500 border-danger-500 text-white";
+                    } else {
+                      iconClass = "border-earth-300 dark:border-earth-700 border-2 text-earth-500 dark:text-earth-400";
+                    }
+
                     return (
                       <motion.div
                         key={q.id}
@@ -844,12 +884,8 @@ export default function App() {
                         }`}
                       >
                         <div className="flex items-center gap-5 flex-1 min-w-0">
-                          <div className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-xl font-black text-xs ${
-                            isSolved 
-                              ? 'bg-success-500 text-white' 
-                              : 'bg-earth-100 dark:bg-earth-800 text-earth-500 dark:text-earth-400'
-                          }`}>
-                            {idx + 1}
+                          <div className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full font-black text-xs transition-colors ${iconClass}`}>
+                            {Icon ? <Icon size={20} strokeWidth={3} /> : (idx + 1)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-earth-900 dark:text-earth-50 truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
@@ -873,9 +909,10 @@ export default function App() {
                             setState(s => ({ 
                               ...s, 
                               currentView: 'practice',
-                              currentQuestionIndex: 0,
+                              currentQuestionIndex: idx,
                               selectedOption: null,
-                              showSolution: false
+                              showSolution: false,
+                              isExplanationExpanded: false
                             }));
                           }}
                           className={`px-6 py-2.5 rounded-xl font-bold text-xs transition-all ${
@@ -1043,9 +1080,12 @@ export default function App() {
                   if (isCorrect) {
                     cardClass = "border-success-500 bg-success-50 dark:bg-success-950/20 text-success-700 dark:text-success-400";
                     letterClass = "bg-success-500 text-white border-success-500";
-                  } else {
-                    cardClass = "border-danger-500 bg-danger-50 dark:bg-danger-950/20 text-danger-700 dark:text-danger-400 opacity-80";
+                  } else if (isWrong) {
+                    cardClass = "border-danger-500 bg-danger-50 dark:bg-danger-950/20 text-danger-700 dark:text-danger-400";
                     letterClass = "bg-danger-500 text-white border-danger-500";
+                  } else {
+                    cardClass = "border-earth-100 dark:border-earth-900 opacity-40 grayscale-[0.5]";
+                    letterClass = "bg-earth-50 dark:bg-earth-900 text-earth-400 border-earth-100 dark:border-earth-900";
                   }
                 } else if (isSelected) {
                   cardClass = "border-brand-500 bg-brand-50 dark:bg-brand-950/20 text-brand-700 dark:text-brand-400 ring-2 ring-brand-500/20";
@@ -1063,11 +1103,13 @@ export default function App() {
                     className={`w-full p-4 md:p-5 rounded-2xl text-left border-2 transition-all duration-200 flex items-center justify-between group ${cardClass}`}
                   >
                     <div className="flex items-center gap-4">
-                      <span className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-sm font-black border-2 transition-all ${letterClass}`}>
-                        {showSolution ? (isCorrect ? <Check size={16} strokeWidth={4} /> : <X size={16} strokeWidth={4} />) : String.fromCharCode(65 + idx)}
+                      <span className={`w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center text-sm font-black border-2 transition-all ${letterClass}`}>
+                        {String.fromCharCode(65 + idx)}
                       </span>
                       <span className="font-bold text-sm md:text-base">{option}</span>
                     </div>
+                    {showSolution && isCorrect && <CheckCircle2 size={20} className="text-success-500" />}
+                    {showSolution && isWrong && <XCircle size={20} className="text-danger-500" />}
                   </button>
                 );
               })}
