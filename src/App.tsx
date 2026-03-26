@@ -465,11 +465,12 @@ const SettingsView = ({ state, setState, playClickSound, updateProgress, INITIAL
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => {
+    const savedView = localStorage.getItem('ecostudy_current_view');
     return {
       questions: MOCK_QUESTIONS,
       progress: INITIAL_PROGRESS,
       isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
-      currentView: 'login',
+      currentView: (savedView as any) || 'login',
       practiceMode: 'normal',
       isAuthenticated: false,
       username: null,
@@ -492,6 +493,13 @@ export default function App() {
     };
   });
 
+  // Persist current view
+  useEffect(() => {
+    if (state.currentView && state.currentView !== 'login') {
+      localStorage.setItem('ecostudy_current_view', state.currentView);
+    }
+  }, [state.currentView]);
+
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -509,6 +517,7 @@ export default function App() {
         }));
       } else {
         // User is signed out
+        localStorage.removeItem('ecostudy_current_view');
         setState(s => ({
           ...s,
           isAuthenticated: false,
@@ -591,14 +600,6 @@ export default function App() {
       accuracy: item.accuracy
     }));
   }, [state.progress.accuracyHistory]);
-
-  useEffect(() => {
-    if (state.username) {
-      localStorage.setItem(`ecostudy_progress_${state.username}`, JSON.stringify(state.progress));
-    } else {
-      localStorage.setItem('ecostudy_progress', JSON.stringify(state.progress));
-    }
-  }, [state.progress, state.username]);
 
   useEffect(() => {
     if (state.isDarkMode) {
@@ -2344,59 +2345,85 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen font-sans">
-      <main className={state.currentView !== 'login' ? "pb-20 md:pb-0 md:pl-20" : ""}>
-        {state.currentView === 'login' && <LoginView setState={setState} playClickSound={playClickSound} />}
-        {state.currentView === 'dashboard' && renderDashboard()}
-        {state.currentView === 'browser' && renderBrowser()}
-        {state.currentView === 'practice' && renderPractice()}
-        {state.currentView === 'settings' && <SettingsView state={state} setState={setState} playClickSound={playClickSound} updateProgress={updateProgress} INITIAL_PROGRESS={INITIAL_PROGRESS} />}
-      </main>
-
-      {/* Navigation Bar (Mobile Bottom / Desktop Left) */}
-      {state.currentView !== 'login' && (
-        <nav className="fixed bottom-0 left-0 right-0 md:top-0 md:bottom-0 md:w-20 bg-white dark:bg-earth-950 border-t md:border-t-0 md:border-r border-earth-200 dark:border-earth-900 flex md:flex-col items-center justify-around md:justify-center md:gap-8 p-4 z-40">
-          <button 
-            onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'dashboard' })) }}
-            className={`p-3 rounded-xl transition-all ${state.currentView === 'dashboard' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30' : 'text-earth-400 hover:text-brand-600 dark:hover:text-brand-400'}`}
-            title="Dashboard"
-          >
-            <LayoutDashboard size={20} />
-          </button>
-          <button 
-            onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'browser' })) }}
-            className={`p-3 rounded-xl transition-all ${state.currentView === 'browser' || state.currentView === 'practice' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30' : 'text-earth-400 hover:text-brand-600 dark:hover:text-brand-400'}`}
-            title="Question Bank"
-          >
-            <BookOpen size={20} />
-          </button>
-          <div className="hidden md:block w-8 h-px bg-earth-200 dark:bg-earth-800 my-2" />
-          <button 
-            onClick={toggleDarkMode}
-            className="p-3 rounded-xl text-earth-400 hover:text-brand-600 dark:hover:text-brand-400 transition-all"
-            title="Toggle Theme"
-          >
-            {state.isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-          <button 
-            onClick={handleSettingsClick}
-            className={`p-3 rounded-xl transition-all ${state.currentView === 'settings' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30' : 'text-earth-400 hover:text-brand-600 dark:hover:text-brand-400'}`} 
-            title="Settings"
-          >
-            <Settings size={20} />
-          </button>
-          <div className="hidden md:block w-8 h-px bg-earth-200 dark:bg-earth-800 my-2" />
-          <button 
-            onClick={async () => {
-              playClickSound();
-              await logout();
+    <div className="min-h-screen font-sans bg-earth-50 dark:bg-earth-950">
+      {!state.isAuthReady ? (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-6">
+          <motion.div 
+            animate={{ 
+              scale: [1, 1.1, 1],
+              rotate: [0, -5, 5, 0]
             }}
-            className="p-3 rounded-xl text-earth-400 hover:text-danger-500 transition-all" 
-            title="Sign Out"
+            transition={{ duration: 2, repeat: Infinity }}
+            className="w-20 h-20 bg-brand-500 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-brand-500/30"
           >
-            <LogOut size={20} />
-          </button>
-        </nav>
+            <BookOpen size={40} />
+          </motion.div>
+          <div className="flex flex-col items-center gap-2">
+            <h1 className="text-3xl font-black tracking-tighter text-earth-900 dark:text-earth-50 italic uppercase">
+              Eco<span className="text-brand-500">Study</span>
+            </h1>
+            <div className="flex items-center gap-2 text-earth-400 font-bold text-xs uppercase tracking-widest">
+              <Loader2 size={14} className="animate-spin" />
+              Initializing Session...
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <main className={state.currentView !== 'login' ? "pb-20 md:pb-0 md:pl-20" : ""}>
+            {state.currentView === 'login' && <LoginView setState={setState} playClickSound={playClickSound} />}
+            {state.currentView === 'dashboard' && renderDashboard()}
+            {state.currentView === 'browser' && renderBrowser()}
+            {state.currentView === 'practice' && renderPractice()}
+            {state.currentView === 'settings' && <SettingsView state={state} setState={setState} playClickSound={playClickSound} updateProgress={updateProgress} INITIAL_PROGRESS={INITIAL_PROGRESS} />}
+          </main>
+
+          {/* Navigation Bar (Mobile Bottom / Desktop Left) */}
+          {state.currentView !== 'login' && (
+            <nav className="fixed bottom-0 left-0 right-0 md:top-0 md:bottom-0 md:w-20 bg-white dark:bg-earth-950 border-t md:border-t-0 md:border-r border-earth-200 dark:border-earth-900 flex md:flex-col items-center justify-around md:justify-center md:gap-8 p-4 z-40">
+              <button 
+                onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'dashboard' })) }}
+                className={`p-3 rounded-xl transition-all ${state.currentView === 'dashboard' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30' : 'text-earth-400 hover:text-brand-600 dark:hover:text-brand-400'}`}
+                title="Dashboard"
+              >
+                <LayoutDashboard size={20} />
+              </button>
+              <button 
+                onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'browser' })) }}
+                className={`p-3 rounded-xl transition-all ${state.currentView === 'browser' || state.currentView === 'practice' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30' : 'text-earth-400 hover:text-brand-600 dark:hover:text-brand-400'}`}
+                title="Question Bank"
+              >
+                <BookOpen size={20} />
+              </button>
+              <div className="hidden md:block w-8 h-px bg-earth-200 dark:bg-earth-800 my-2" />
+              <button 
+                onClick={toggleDarkMode}
+                className="p-3 rounded-xl text-earth-400 hover:text-brand-600 dark:hover:text-brand-400 transition-all"
+                title="Toggle Theme"
+              >
+                {state.isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              <button 
+                onClick={handleSettingsClick}
+                className={`p-3 rounded-xl transition-all ${state.currentView === 'settings' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/30' : 'text-earth-400 hover:text-brand-600 dark:hover:text-brand-400'}`} 
+                title="Settings"
+              >
+                <Settings size={20} />
+              </button>
+              <div className="hidden md:block w-8 h-px bg-earth-200 dark:bg-earth-800 my-2" />
+              <button 
+                onClick={async () => {
+                  playClickSound();
+                  await logout();
+                }}
+                className="p-3 rounded-xl text-earth-400 hover:text-danger-500 transition-all" 
+                title="Sign Out"
+              >
+                <LogOut size={20} />
+              </button>
+            </nav>
+          )}
+        </>
       )}
 
       {renderPrank()}
