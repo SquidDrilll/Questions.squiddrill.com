@@ -33,15 +33,20 @@ import {
   Minus,
   Plus,
   Equal,
-  LogOut
+  LogOut,
+  Timer,
+  Bookmark
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Question, UserProgress, AppState } from './types';
 import { MOCK_QUESTIONS, playClickSound, playSuccessSound, playErrorSound, RICKROLL_GIF, RICKROLL_AUDIO } from './constants';
 
 const INITIAL_PROGRESS: UserProgress = {
   completedQuestions: [],
   questionStatus: {},
+  bookmarkedQuestions: [],
+  accuracyHistory: [],
   accuracy: 0,
   streak: 0,
   lastAttemptDate: null,
@@ -56,11 +61,20 @@ function CalculatorComponent() {
   const [shouldReset, setShouldReset] = useState(false);
 
   const handleNumber = (num: string) => {
-    if (display === '0' || shouldReset) {
-      setDisplay(num);
-      setShouldReset(false);
+    if (num === '.') {
+      if (shouldReset) {
+        setDisplay('0.');
+        setShouldReset(false);
+      } else if (!display.includes('.')) {
+        setDisplay(display + '.');
+      }
     } else {
-      setDisplay(display + num);
+      if (display === '0' || shouldReset) {
+        setDisplay(num);
+        setShouldReset(false);
+      } else {
+        setDisplay(display + num);
+      }
     }
   };
 
@@ -103,16 +117,33 @@ function CalculatorComponent() {
     setShouldReset(false);
   };
 
-  const CalcButton = ({ label, onClick, variant = 'default' }: { label: string | React.ReactNode, onClick: () => void, variant?: 'default' | 'operator' | 'action', key?: any }) => (
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key;
+      if (/[0-9.]/.test(key)) {
+        handleNumber(key);
+      } else if (key === '+' || key === '-' || key === '*' || key === '/') {
+        handleOperator(key);
+      } else if (key === 'Enter' || key === '=') {
+        handleEqual();
+      } else if (key === 'Escape' || key === 'Backspace' || key === 'c' || key === 'C') {
+        clear();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [display, equation, shouldReset]);
+
+  const CalcButton = ({ label, onClick, variant = 'default', className = '' }: { key?: React.Key, label: string | React.ReactNode, onClick: () => void, variant?: 'default' | 'operator' | 'action', className?: string }) => (
     <button
       onClick={() => { playClickSound(); onClick(); }}
-      className={`h-14 rounded-2xl font-bold text-lg transition-all active:scale-95 flex items-center justify-center ${
+      className={`w-full h-full min-h-[56px] rounded-2xl font-bold text-lg transition-all active:scale-95 flex items-center justify-center ${
         variant === 'operator' 
           ? 'bg-brand-500 text-white hover:bg-brand-600 shadow-lg shadow-brand-500/20' 
           : variant === 'action'
           ? 'bg-earth-100 dark:bg-earth-800 text-earth-600 dark:text-earth-400 hover:bg-earth-200 dark:hover:bg-earth-700'
           : 'bg-white dark:bg-earth-900 text-earth-900 dark:text-earth-100 border border-earth-100 dark:border-earth-800 hover:bg-earth-50 dark:hover:bg-earth-800'
-      }`}
+      } ${className}`}
     >
       {label}
     </button>
@@ -130,29 +161,54 @@ function CalculatorComponent() {
       </div>
 
       <div className="grid grid-cols-4 gap-2">
-        <CalcButton label="C" onClick={clear} variant="action" />
+        <CalcButton label="C" onClick={clear} variant="action" className="col-span-2" />
         <CalcButton label={<Divide size={20} />} onClick={() => handleOperator('/')} variant="action" />
         <CalcButton label={<X size={20} />} onClick={() => handleOperator('*')} variant="action" />
-        <CalcButton label={<Minus size={20} />} onClick={() => handleOperator('-')} variant="action" />
         
         {[7, 8, 9].map(n => <CalcButton key={n} label={n.toString()} onClick={() => handleNumber(n.toString())} />)}
-        <CalcButton label={<Plus size={20} />} onClick={() => handleOperator('+')} variant="operator" />
+        <CalcButton label={<Minus size={20} />} onClick={() => handleOperator('-')} variant="operator" />
         
         {[4, 5, 6].map(n => <CalcButton key={n} label={n.toString()} onClick={() => handleNumber(n.toString())} />)}
-        <div className="row-span-2 grid grid-rows-2 gap-2">
-          <CalcButton label={<Equal size={20} />} onClick={handleEqual} variant="operator" />
-        </div>
+        <CalcButton label={<Plus size={20} />} onClick={() => handleOperator('+')} variant="operator" />
         
         {[1, 2, 3].map(n => <CalcButton key={n} label={n.toString()} onClick={() => handleNumber(n.toString())} />)}
+        <CalcButton label={<Equal size={20} />} onClick={handleEqual} variant="operator" className="row-span-2" />
         
-        <div className="col-span-2">
-          <CalcButton label="0" onClick={() => handleNumber('0')} />
-        </div>
+        <CalcButton label="0" onClick={() => handleNumber('0')} className="col-span-2" />
         <CalcButton label="." onClick={() => handleNumber('.')} />
       </div>
     </div>
   );
 }
+
+const QuestionTimer = ({ questionId, isPaused }: { questionId: string, isPaused: boolean }) => {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    setSeconds(0);
+  }, [questionId]);
+
+  useEffect(() => {
+    if (isPaused) return;
+    const interval = setInterval(() => {
+      setSeconds(s => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [questionId, isPaused]);
+
+  const formatTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-earth-100 dark:bg-earth-900 text-earth-600 dark:text-earth-400 rounded-full font-mono text-xs font-bold shadow-sm">
+      <Timer size={14} />
+      {formatTime(seconds)}
+    </div>
+  );
+};
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => {
@@ -168,6 +224,7 @@ export default function App() {
       progress,
       isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
       currentView: savedUsername ? 'dashboard' : 'login',
+      practiceMode: 'normal',
       isAuthenticated: !!savedUsername,
       username: savedUsername,
       currentQuestionIndex: 0,
@@ -188,6 +245,30 @@ export default function App() {
   const [prankProgress, setPrankProgress] = useState(0);
   const audioRef = React.useRef<HTMLAudioElement>(null);
   const audioTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const topicData = useMemo(() => {
+    const topics: Record<string, { subject: string, correct: number, total: number }> = {};
+    state.progress.completedQuestions.forEach(qId => {
+      const q = state.questions.find(q => q.id === qId);
+      if (q) {
+        if (!topics[q.subject]) {
+          topics[q.subject] = { subject: q.subject, correct: 0, total: 0 };
+        }
+        topics[q.subject].total += 1;
+        if (state.progress.questionStatus?.[qId] === 'correct') {
+          topics[q.subject].correct += 1;
+        }
+      }
+    });
+    return Object.values(topics);
+  }, [state.progress.completedQuestions, state.progress.questionStatus, state.questions]);
+
+  const accuracyData = useMemo(() => {
+    return (state.progress.accuracyHistory || []).map((item, index) => ({
+      name: `Attempt ${index + 1}`,
+      accuracy: item.accuracy
+    }));
+  }, [state.progress.accuracyHistory]);
 
   useEffect(() => {
     if (state.username) {
@@ -243,6 +324,25 @@ export default function App() {
     setState(s => ({ ...s, isDarkMode: !s.isDarkMode }));
   };
 
+  const toggleBookmark = (questionId: string) => {
+    playClickSound();
+    setState(s => {
+      const bookmarks = s.progress.bookmarkedQuestions || [];
+      const isBookmarked = bookmarks.includes(questionId);
+      const newBookmarks = isBookmarked 
+        ? bookmarks.filter(id => id !== questionId)
+        : [...bookmarks, questionId];
+      
+      return {
+        ...s,
+        progress: {
+          ...s.progress,
+          bookmarkedQuestions: newBookmarks
+        }
+      };
+    });
+  };
+
   const handleAnswer = (questionId: string, isCorrect: boolean) => {
     if (isCorrect) {
       playSuccessSound();
@@ -274,7 +374,11 @@ export default function App() {
         totalCorrect: newTotalCorrect,
         accuracy: newAccuracy,
         streak: newStreak,
-        lastAttemptDate: today
+        lastAttemptDate: today,
+        accuracyHistory: [
+          ...(s.progress.accuracyHistory || []),
+          { date: new Date().toLocaleDateString(), accuracy: newAccuracy }
+        ].slice(-20) // Keep last 20 attempts
       };
 
       // Prank trigger: removed to prevent black screen issues
@@ -582,14 +686,56 @@ export default function App() {
         <div className="card-clean flex flex-col justify-between">
           <div>
             <h2 className="text-xl font-bold mb-2">Practice</h2>
-            <p className="text-earth-500 text-sm mb-6">Dive back into your studies with personalized practice sessions.</p>
+            <p className="text-earth-500 text-sm mb-4">Dive back into your studies with personalized practice sessions.</p>
           </div>
-          <button 
-            onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'browser' })) }}
-            className="btn-primary w-full"
-          >
-            Browse Questions
-          </button>
+          <div className="space-y-2">
+            <button 
+              onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'browser', practiceMode: 'normal' })) }}
+              className="btn-primary w-full"
+            >
+              Browse Questions
+            </button>
+            <button 
+              onClick={() => { 
+                playClickSound(); 
+                setState(s => ({ 
+                  ...s, 
+                  currentView: 'practice', 
+                  practiceMode: 'timed',
+                  selectedSubject: 'All',
+                  selectedChapter: 'All',
+                  currentQuestionIndex: 0,
+                  selectedOption: null,
+                  showSolution: false,
+                  isExplanationExpanded: false
+                }));
+              }}
+              className="w-full py-3 bg-warning-500/10 text-warning-600 dark:text-warning-400 rounded-xl font-bold hover:bg-warning-500/20 transition-all flex items-center justify-center gap-2"
+            >
+              <Clock size={18} />
+              Timed Mode
+            </button>
+            <button 
+              onClick={() => { 
+                playClickSound(); 
+                setState(s => ({ 
+                  ...s, 
+                  currentView: 'practice', 
+                  practiceMode: 'mistakes',
+                  selectedSubject: 'All',
+                  selectedChapter: 'All',
+                  currentQuestionIndex: 0,
+                  selectedOption: null,
+                  showSolution: false,
+                  isExplanationExpanded: false
+                }));
+              }}
+              className="w-full py-3 bg-danger-500/10 text-danger-600 dark:text-danger-400 rounded-xl font-bold hover:bg-danger-500/20 transition-all flex items-center justify-center gap-2"
+            >
+              <AlertCircle size={18} />
+              Mistake-Focused
+            </button>
+          </div>
         </div>
         
         <div className="card-clean">
@@ -622,6 +768,110 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <div className="card-clean">
+          <h2 className="text-xl font-bold mb-6">Accuracy Trend</h2>
+          <div className="h-64">
+            {accuracyData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={accuracyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={state.isDarkMode ? '#2d2d2d' : '#e5e5e5'} />
+                  <XAxis dataKey="name" stroke={state.isDarkMode ? '#888' : '#666'} fontSize={12} />
+                  <YAxis stroke={state.isDarkMode ? '#888' : '#666'} fontSize={12} domain={[0, 100]} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: state.isDarkMode ? '#1a1a1a' : '#fff', borderColor: state.isDarkMode ? '#333' : '#eee', borderRadius: '8px' }}
+                    itemStyle={{ color: '#6366f1' }}
+                  />
+                  <Line type="monotone" dataKey="accuracy" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-earth-400 italic">
+                Answer more questions to see your trend.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card-clean">
+          <h2 className="text-xl font-bold mb-6">Completed Topics</h2>
+          <div className="h-64">
+            {topicData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topicData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={state.isDarkMode ? '#2d2d2d' : '#e5e5e5'} />
+                  <XAxis dataKey="subject" stroke={state.isDarkMode ? '#888' : '#666'} fontSize={12} />
+                  <YAxis stroke={state.isDarkMode ? '#888' : '#666'} fontSize={12} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: state.isDarkMode ? '#1a1a1a' : '#fff', borderColor: state.isDarkMode ? '#333' : '#eee', borderRadius: '8px' }}
+                  />
+                  <Bar dataKey="correct" stackId="a" fill="#22c55e" name="Correct" radius={[0, 0, 4, 4]} />
+                  <Bar dataKey="total" stackId="a" fill="#6366f1" name="Total Attempted" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-earth-400 italic">
+                Complete questions to see topic breakdown.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {(state.progress.bookmarkedQuestions || []).length > 0 && (
+        <div className="mt-12">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl">
+              <Bookmark size={20} fill="currentColor" />
+            </div>
+            <h2 className="text-2xl font-bold text-earth-900 dark:text-earth-50">Bookmarked Questions</h2>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {state.questions
+              .filter(q => (state.progress.bookmarkedQuestions || []).includes(q.id))
+              .map(q => (
+                <div key={q.id} className="card-clean flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-brand-400 dark:hover:border-brand-600 transition-all">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-earth-900 dark:text-earth-50 line-clamp-2">{q.text}</p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-earth-400">{q.subject}</span>
+                      <div className="w-1 h-1 bg-earth-300 dark:bg-earth-700 rounded-full" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-earth-400 truncate">{q.chapter}</span>
+                      <div className="w-1 h-1 bg-earth-300 dark:bg-earth-700 rounded-full" />
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${
+                        q.difficulty === 'Hard' ? 'text-danger-500' : q.difficulty === 'Medium' ? 'text-warning-500' : 'text-success-500'
+                      }`}>
+                        {q.difficulty}
+                      </span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      playClickSound();
+                      const chapterQuestions = state.questions.filter(cq => cq.subject === q.subject && cq.chapter === q.chapter);
+                      const qIndex = chapterQuestions.findIndex(cq => cq.id === q.id);
+                      
+                      setState(s => ({
+                        ...s,
+                        currentView: 'practice',
+                        selectedSubject: q.subject,
+                        selectedChapter: q.chapter,
+                        currentQuestionIndex: qIndex !== -1 ? qIndex : 0,
+                        selectedOption: null,
+                        showSolution: false,
+                        isExplanationExpanded: false
+                      }));
+                    }}
+                    className="px-6 py-2.5 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-xl font-bold text-xs hover:bg-brand-200 dark:hover:bg-brand-900/50 transition-colors whitespace-nowrap self-start sm:self-auto"
+                  >
+                    Review
+                  </button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -634,7 +884,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-earth-50 dark:bg-earth-950 flex flex-col md:flex-row">
         {/* Sidebar for Subjects */}
-        <aside className="w-full md:w-72 bg-white dark:bg-earth-900 border-r border-earth-200 dark:border-earth-800 p-8 flex flex-col gap-8">
+        <aside className="w-full md:w-72 bg-white dark:bg-earth-900 border-r border-earth-200 dark:border-earth-800 p-6 md:p-8 flex flex-col gap-6 md:gap-8 shrink-0">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => { playClickSound(); setState(s => ({ ...s, currentView: 'dashboard' })) }}
@@ -712,9 +962,9 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-8 py-12">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-8 md:py-12">
             {/* Header with Search and Stats */}
-            <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-16">
+            <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 md:gap-8 mb-8 md:mb-16">
               <div className="space-y-2">
                 <h1 className="text-5xl font-black tracking-tight text-earth-900 dark:text-earth-50">
                   {isChapterSelected ? state.selectedChapter : state.activeSubject === 'All' ? 'Question Bank' : state.activeSubject}
@@ -906,6 +1156,7 @@ export default function App() {
                   {selectedChapterQuestions.map((q, idx) => {
                     const isSolved = state.progress.completedQuestions.includes(q.id);
                     const status = state.progress.questionStatus?.[q.id];
+                    const isBookmarked = (state.progress.bookmarkedQuestions || []).includes(q.id);
                     
                     let iconClass = "border-earth-200 dark:border-earth-800 text-earth-600 dark:text-earth-400 hover:border-brand-500 hover:text-brand-500 bg-white dark:bg-earth-900";
                     
@@ -923,6 +1174,7 @@ export default function App() {
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: idx * 0.01 }}
+                        className="relative group"
                       >
                         <button
                           onClick={() => {
@@ -943,6 +1195,20 @@ export default function App() {
                           {status === 'correct' && <Check size={14} strokeWidth={3} />}
                           {status === 'incorrect' && <X size={14} strokeWidth={3} />}
                         </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleBookmark(q.id);
+                          }}
+                          className={`absolute top-1.5 right-1.5 p-1 rounded-full transition-colors z-10 ${
+                            isBookmarked 
+                              ? 'text-brand-500 hover:text-brand-600' 
+                              : 'text-earth-400 hover:text-brand-500 opacity-0 hover:opacity-100 group-hover:opacity-100'
+                          }`}
+                          title={isBookmarked ? "Remove Bookmark" : "Bookmark Question"}
+                        >
+                          <Bookmark size={14} fill={isBookmarked ? "currentColor" : "none"} />
+                        </button>
                       </motion.div>
                     );
                   })}
@@ -956,36 +1222,61 @@ export default function App() {
   };
 
   const renderPractice = () => {
-    if (!state.selectedSubject || !state.selectedChapter) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
-          <AlertCircle size={48} className="text-danger-500 mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Session Error</h2>
-          <p className="text-earth-500 mb-6">We couldn't find the selected chapter. Please go back and try again.</p>
-          <button 
-            onClick={() => setState(s => ({ ...s, currentView: 'browser', selectedChapter: null }))}
-            className="btn-primary"
-          >
-            Back to Browser
-          </button>
-        </div>
-      );
+    let chapterQuestions: Question[] = [];
+    let modeTitle = '';
+
+    if (state.practiceMode === 'mistakes') {
+      chapterQuestions = state.questions.filter(q => state.progress.questionStatus?.[q.id] === 'incorrect');
+      modeTitle = 'Mistake-Focused Mode';
+    } else if (state.practiceMode === 'timed') {
+      // For timed mode, let's just take 20 random questions or all questions if less
+      // To keep it stable, we could just take the first 20 unanswered, or just all questions.
+      // Let's just use all questions for now, but shuffle them.
+      // Actually, let's just take 20 random questions.
+      // To avoid reshuffling on every render, we should ideally store the session questions in state.
+      // For simplicity, let's just use all questions that are not completed, up to 20.
+      chapterQuestions = state.questions.filter(q => !state.progress.completedQuestions.includes(q.id)).slice(0, 20);
+      if (chapterQuestions.length === 0) {
+        chapterQuestions = state.questions.slice(0, 20); // Fallback if all completed
+      }
+      modeTitle = 'Timed Mode';
+    } else {
+      if (!state.selectedSubject || !state.selectedChapter) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
+            <AlertCircle size={48} className="text-danger-500 mb-4" />
+            <h2 className="text-2xl font-bold mb-2">Session Error</h2>
+            <p className="text-earth-500 mb-6">We couldn't find the selected chapter. Please go back and try again.</p>
+            <button 
+              onClick={() => setState(s => ({ ...s, currentView: 'browser', selectedChapter: null }))}
+              className="btn-primary"
+            >
+              Back to Browser
+            </button>
+          </div>
+        );
+      }
+      chapterQuestions = allGroupedQuestions[state.selectedSubject]?.[state.selectedChapter] || [];
+      modeTitle = `${state.selectedSubject} - ${state.selectedChapter}`;
     }
 
-    const chapterQuestions = allGroupedQuestions[state.selectedSubject]?.[state.selectedChapter] || [];
     const question = chapterQuestions[state.currentQuestionIndex];
 
     if (!question) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
           <AlertCircle size={48} className="text-danger-500 mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Question Not Found</h2>
-          <p className="text-earth-500 mb-6">The question you're looking for doesn't exist in this chapter.</p>
+          <h2 className="text-2xl font-bold mb-2">{state.practiceMode === 'mistakes' ? 'No Mistakes Found!' : 'Question Not Found'}</h2>
+          <p className="text-earth-500 mb-6">
+            {state.practiceMode === 'mistakes' 
+              ? "Great job! You don't have any incorrect questions to review right now." 
+              : "The question you're looking for doesn't exist in this session."}
+          </p>
           <button 
-            onClick={() => setState(s => ({ ...s, currentView: 'browser' }))}
+            onClick={() => setState(s => ({ ...s, currentView: 'dashboard' }))}
             className="btn-primary"
           >
-            Back to Browser
+            Back to Dashboard
           </button>
         </div>
       );
@@ -1005,7 +1296,7 @@ export default function App() {
           isExplanationExpanded: false
         }));
       } else {
-        setState(s => ({ ...s, currentView: 'browser', selectedChapter: null, isExplanationExpanded: false }));
+        setState(s => ({ ...s, currentView: 'dashboard', selectedChapter: null, isExplanationExpanded: false }));
       }
     };
 
@@ -1040,6 +1331,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
+              <QuestionTimer questionId={question.id} isPaused={showSolution} />
               <button 
                 onClick={() => { playClickSound(); setState(s => ({ ...s, showCalculator: true })) }}
                 className="p-2.5 bg-earth-100 dark:bg-earth-900 text-earth-600 dark:text-earth-400 hover:bg-brand-500 hover:text-white rounded-xl transition-all shadow-sm"
@@ -1070,16 +1362,29 @@ export default function App() {
                     {question.difficulty}
                   </span>
                   <span className="text-[10px] font-black uppercase tracking-widest text-earth-400">
-                    {question.year} • {state.selectedSubject}
+                    {state.practiceMode === 'normal' ? `${question.year} • ${state.selectedSubject}` : modeTitle}
                   </span>
                 </div>
-                <button 
-                  onClick={() => { playClickSound(); setState(s => ({ ...s, showCalculator: true })) }}
-                  className="p-2 text-earth-400 hover:text-brand-500 transition-colors"
-                  title="Calculator"
-                >
-                  <Calculator size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => toggleBookmark(question.id)}
+                    className={`p-2 transition-colors ${
+                      (state.progress.bookmarkedQuestions || []).includes(question.id)
+                        ? 'text-brand-500' 
+                        : 'text-earth-400 hover:text-brand-500'
+                    }`}
+                    title="Bookmark Question"
+                  >
+                    <Bookmark size={18} fill={(state.progress.bookmarkedQuestions || []).includes(question.id) ? "currentColor" : "none"} />
+                  </button>
+                  <button 
+                    onClick={() => { playClickSound(); setState(s => ({ ...s, showCalculator: true })) }}
+                    className="p-2 text-earth-400 hover:text-brand-500 transition-colors"
+                    title="Calculator"
+                  >
+                    <Calculator size={18} />
+                  </button>
+                </div>
               </div>
               <h2 className="text-xl md:text-2xl font-bold leading-snug text-earth-900 dark:text-earth-50">
                 {question.text}
